@@ -1,0 +1,7 @@
+Date,Category,Description,Amount,Type,Payment_Method
+2025-10-22 23:14:49.106151,Food,Dinner at restaurant,4964,Expense,Debit Card
+2025-10-22 23:14:53.972140,Entertainment,Music subscription,511,Expense,Bank Transfer
+2025-10-22 23:15:03.543971,Utilities,Mobile recharge,4076,Expense,Debit Card
+2025-10-22 23:15:11.162693,Investment,Stock Dividend,981,Income,Debit Card
+2025-10-22 23:15:38.404620,Entertainment,Weekend outing,1111,Expense,UPI
+2025-10-22 23:15:41.227150,Food,Coffee shop bill,3681,Expense,Debit Card
