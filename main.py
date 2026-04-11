@@ -7,6 +7,8 @@ from datetime import datetime
 import analysis
 import os
 from streamlit_autorefresh import st_autorefresh
+from PIL import Image
+
 
 def generate_description(category, txn_type):
     income_descriptions = {
@@ -31,16 +33,21 @@ def generate_description(category, txn_type):
 
     return random.choice(options)
 
-fake = Faker()
 
 st.set_page_config(page_title="Dynamic Personal Finance Dashboard", layout="wide")
 st.title("Dynamic Personal Finance Dashboard")
 
-# Initialize session state
+
+# Initialize session state variables
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame(columns=["Date", "Category", "Description", "Amount", "Type", "Payment_Method"])
+
 if "streaming" not in st.session_state:
     st.session_state.streaming = False
+
+if "data_changed" not in st.session_state:
+    st.session_state.data_changed = False
+
 
 # Sidebar controls
 st.sidebar.header("Controls")
@@ -51,11 +58,12 @@ if start_stop:
 
 refresh_sec = st.sidebar.slider("Refresh every (seconds)", 1, 10, 3)
 persist = st.sidebar.checkbox("Save generated data to CSV", value=False)
-run_analysis = st.sidebar.button("Run Analysis Now")
+run_analysis_button = st.sidebar.button("Run Analysis Now")
 
 
 if persist and not os.path.exists("data"):
     os.makedirs("data")
+
 
 # Manual add form
 st.sidebar.subheader("Add Manual Transaction")
@@ -66,11 +74,14 @@ with st.sidebar.form("manual_txn"):
     amt = st.number_input("Amount", min_value=1, value=100)
     ttype = st.selectbox("Type", ["Expense", "Income"])
     method = st.selectbox("Payment Method", ["UPI", "Credit Card", "Debit Card", "Bank Transfer"])
-    submit = st.form_submit_button("Add")
+    submit = st.form_submit_button("Add transaction")
     if submit:
-        new = {"Date": pd.to_datetime(d), "Category": cat, "Description": desc, "Amount": amt, "Type": ttype, "Payment_Method": method}
+        new = {"Date": pd.to_datetime(d), "Category": cat, "Description": desc, "Amount": amt,
+               "Type": ttype, "Payment_Method": method}
         st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([new])], ignore_index=True)
         st.success("Transaction added.")
+        st.session_state.data_changed = True  # Mark data change
+
 
 # Streaming simulation
 if st.session_state.streaming:
@@ -95,6 +106,9 @@ if st.session_state.streaming:
     if persist:
         st.session_state.df.to_csv("data/historical_data.csv", index=False)
 
+    st.session_state.data_changed = True  # Mark data change
+
+
 # KPIs
 st.subheader("Overview")
 df = st.session_state.df.copy()
@@ -104,45 +118,54 @@ if not df.empty:
     expense = df[df["Type"].str.lower() == "expense"]["Amount"].sum()
     savings = income - expense
 
-
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Income", f"₹{income:,.0f}")
     c2.metric("Total Expense", f"₹{expense:,.0f}")
     c3.metric("Net Savings", f"₹{savings:,.0f}")
 
+    with st.expander("Recent Transactions (click to expand)"):
+        st.dataframe(df.tail(10).sort_values(by="Date", ascending=False))
 
-    st.markdown("---")
-    st.subheader("Recent Transactions")
-    st.dataframe(df.tail(10).sort_values(by="Date", ascending=False))
 else:
     st.info("No data yet. Start streaming or add a transaction manually.")
 
-# Run offline analysis
-if run_analysis:
+
+# Run analysis automatically if data changed
+if st.session_state.data_changed:
+    if st.session_state.df.empty:
+        st.warning("No data available for analysis.")
+    else:
+        with st.spinner("Generating analysis visuals..."):
+            files = analysis.generate_analytics(st.session_state.df)
+        if files:
+            st.success(f"Generated: {', '.join([os.path.basename(f) for f in files])}")
+    st.session_state.data_changed = False  # Reset flag
+
+# Optional: allow manual trigger as backup (if you want to keep it)
+if run_analysis_button:
     if df.empty:
         st.warning("No data available for analysis.")
     else:
-        st.info("Generating analysis visuals...")
-        files = analysis.generate_analytics(df)
+        with st.spinner("Generating analysis visuals..."):
+            files = analysis.generate_analytics(df)
         if files:
             st.success(f"Generated: {', '.join([os.path.basename(f) for f in files])}")
 
-
-
 # Show visuals if available
+
 st.markdown("---")
 st.subheader("Visual Insights")
 cols = st.columns(3)
-visuals = ["monthly_trend.png", "expense_distribution.png", "correlation_heatmap.png"]
-for i, vis in enumerate(visuals):
-    path = os.path.join("visuals", vis)
-    if os.path.exists(path):
-        cols[i % 3].image(path, caption=vis)
-    else:
-        cols[i % 3].info(f"Run analysis to generate {vis}.")
+visuals = ["income_vs_expense.png","income_distribution.png", "expense_breakdown_pie.png"]
 
+if not df.empty:
+    for i, vis in enumerate(visuals):
+        path = os.path.join("visuals", vis)
+        if os.path.exists(path):
+            cols[i % 3].image(path, caption=vis)
+        else:
+            cols[i % 3].info(f"Run analysis to generate {vis}.")
 
-# Auto-refresh
+# Auto-refresh pause for UX smoothness
 if st.session_state.streaming:
     time.sleep(refresh_sec)
-    
